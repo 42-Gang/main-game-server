@@ -1,6 +1,7 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { PinoInstrumentation } from '@opentelemetry/instrumentation-pino';
 
 if (!process.env.JAEGER_ENDPOINT) {
   throw new Error('JAEGER_ENDPOINT environment variable is not set');
@@ -13,7 +14,7 @@ const sdk = new NodeSDK({
     headers: {},
   }),
   serviceName: 'main-game-service',
-  instrumentations: [getNodeAutoInstrumentations()],
+  instrumentations: [getNodeAutoInstrumentations(), new PinoInstrumentation()],
 });
 
 sdk.start();
