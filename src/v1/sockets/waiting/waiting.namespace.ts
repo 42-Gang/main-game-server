@@ -7,20 +7,26 @@ import { WAITING_SOCKET_EVENTS } from './waiting.event.js';
 import { FastifyBaseLogger } from 'fastify';
 import AutoSocketHandler from './handlers/auto.socket.handler.js';
 import CustomSocketHandler from './handlers/custom.socket.handler.js';
+import { context, propagation, trace } from '@opentelemetry/api';
 
-function registerAutoEvents(socket: Socket, handler: AutoSocketHandler, logger: FastifyBaseLogger) {
+function registerAutoEvents(
+  socket: Socket,
+  handler: AutoSocketHandler,
+  logger: FastifyBaseLogger,
+  connSpan: ReturnType<typeof tracer.startSpan>,
+) {
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.JOIN,
-    socketErrorHandler(socket, logger, (payload: autoJoinSchemaType) =>
-      handler.joinAutoRoom(socket, payload),
-    ),
+    socketErrorHandler(socket, logger, async (payload: autoJoinSchemaType) => {
+      await handler.joinAutoRoom(socket, payload);
+    }),
   );
 
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.LEAVE,
-    socketErrorHandler(socket, logger, (payload: autoLeaveSchemaType) =>
-      handler.leaveAutoRoom(socket, payload),
-    ),
+    socketErrorHandler(socket, logger, async (payload: autoLeaveSchemaType) => {
+      await handler.leaveAutoRoom(socket, payload);
+    }),
   );
 }
 
@@ -28,28 +34,44 @@ function registerCustomEvents(
   socket: Socket,
   handler: CustomSocketHandler,
   logger: FastifyBaseLogger,
+  connSpan: ReturnType<typeof tracer.startSpan>,
 ) {
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.CREATE,
-    socketErrorHandler(socket, logger, (payload) => handler.createCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.createCustomRoom(socket, payload);
+    }),
   );
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.INVITE,
-    socketErrorHandler(socket, logger, (payload) => handler.inviteCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.inviteCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.ACCEPT,
-    socketErrorHandler(socket, logger, (payload) => handler.acceptCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.acceptCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.START,
-    socketErrorHandler(socket, logger, (payload) => handler.startCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.startCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.LEAVE,
-    socketErrorHandler(socket, logger, () => handler.leaveRoom(socket)),
+    socketErrorHandler(socket, logger, async () => {
+      await handler.leaveRoom(socket);
+    }),
   );
 }
+
+const tracer = trace.getTracer('game-ws');
 
 export function startWaitingNamespace(namespace: Namespace) {
   namespace.use(socketMiddleware);
@@ -63,36 +85,102 @@ export function startWaitingNamespace(namespace: Namespace) {
     const logger = namespace.server.logger;
     const userId = socket.data.userId;
 
-    await socketCache.setSocketId({
-      namespace: 'waiting',
-      socketId: socket.id,
-      userId: userId,
-    });
-
-    logger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
-
-    registerAutoEvents(socket, autoSocketHandler, logger);
-    registerCustomEvents(socket, customSocketHandler, logger);
-
-    socket.on('disconnect', async () => {
-      try {
-        logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
-        await socketCache.deleteSocketId({
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+    await tracer.startActiveSpan(
+      'ws.waiting.connection',
+      {
+        attributes: {
+          userId,
+          socketId: socket.id,
+        },
+      },
+      parentCtx,
+      async (span) => {
+        await socketCache.setSocketId({
           namespace: 'waiting',
+          socketId: socket.id,
           userId: userId,
         });
+        const childLogger = logger.child({
+          namespace: 'waiting',
+          socketId: socket.id,
+          userId: userId,
+        });
+        childLogger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
 
-        await autoSocketHandler.leaveAllAutoRooms(socket);
-        await customSocketHandler.leaveRoom(socket);
-      } catch (error) {
-        logger.error(
-          `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
-        );
-      }
-    });
+        socket.use(async (packet, next) => {
+          logger.info(packet, '🟢 [/waiting] Socket middleware packet');
+          const eventType = packet[0];
+          const parentCtx = trace.setSpan(context.active(), span);
 
-    socket.on('error', (error: Error) => {
-      logger.info(`Error in waiting namespace: ${error.message}`);
-    });
+          await tracer.startActiveSpan(
+            eventType,
+            {
+              attributes: {
+                namespace: socket.nsp.name,
+                socketId: socket.id,
+                userId,
+                eventType,
+              },
+            },
+            parentCtx,
+            async (eventSpan) => {
+              try {
+                await next();
+                eventSpan.setStatus({ code: 1 });
+              } catch (error) {
+                eventSpan.setStatus({ code: 2, message: (error as Error).message });
+                throw error;
+              } finally {
+                eventSpan.end();
+              }
+            },
+          );
+        });
+
+        registerAutoEvents(socket, autoSocketHandler, childLogger, span);
+        registerCustomEvents(socket, customSocketHandler, childLogger, span);
+
+        socket.on('disconnect', async () => {
+          const parentCtx = trace.setSpan(context.active(), span);
+          await tracer.startActiveSpan(
+            'ws.waiting.disconnect',
+            {
+              attributes: {
+                userId,
+                socketId: socket.id,
+                eventType: 'disconnect',
+              },
+            },
+            parentCtx,
+            async (span) => {
+              span.setAttribute('userId', userId);
+              span.setAttribute('socketId', socket.id);
+              span.setAttribute('eventType', 'disconnect');
+              try {
+                childLogger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
+                await socketCache.deleteSocketId({
+                  namespace: 'waiting',
+                  userId: userId,
+                });
+
+                await autoSocketHandler.leaveAllAutoRooms(socket);
+                await customSocketHandler.leaveRoom(socket);
+
+                span.end();
+              } catch (error) {
+                childLogger.error(
+                  `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
+                );
+              }
+            },
+          );
+        });
+
+        socket.on('error', (error: Error) => {
+          childLogger.info(`Error in waiting namespace: ${error.message}`);
+        });
+      },
+    );
   });
 }
