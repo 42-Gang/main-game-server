@@ -13,7 +13,6 @@ function registerAutoEvents(
   socket: Socket,
   handler: AutoSocketHandler,
   logger: FastifyBaseLogger,
-  connSpan: ReturnType<typeof tracer.startSpan>,
 ) {
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.JOIN,
@@ -34,7 +33,6 @@ function registerCustomEvents(
   socket: Socket,
   handler: CustomSocketHandler,
   logger: FastifyBaseLogger,
-  connSpan: ReturnType<typeof tracer.startSpan>,
 ) {
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.CREATE,
@@ -138,8 +136,8 @@ export function startWaitingNamespace(namespace: Namespace) {
           );
         });
 
-        registerAutoEvents(socket, autoSocketHandler, childLogger, span);
-        registerCustomEvents(socket, customSocketHandler, childLogger, span);
+        registerAutoEvents(socket, autoSocketHandler, childLogger);
+        registerCustomEvents(socket, customSocketHandler, childLogger);
 
         socket.on('disconnect', async () => {
           const parentCtx = trace.setSpan(context.active(), span);
