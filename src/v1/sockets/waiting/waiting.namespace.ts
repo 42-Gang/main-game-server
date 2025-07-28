@@ -7,7 +7,8 @@ import { WAITING_SOCKET_EVENTS } from './waiting.event.js';
 import { FastifyBaseLogger } from 'fastify';
 import AutoSocketHandler from './handlers/auto.socket.handler.js';
 import CustomSocketHandler from './handlers/custom.socket.handler.js';
-import { context, propagation, trace } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
+import { withTracing } from '../utils/tracing.helper.js';
 
 function registerAutoEvents(socket: Socket, handler: AutoSocketHandler, logger: FastifyBaseLogger) {
   socket.on(
@@ -65,13 +66,11 @@ function registerCustomEvents(
   );
 }
 
-const tracer = trace.getTracer('game-ws');
-
 export function startWaitingNamespace(namespace: Namespace) {
   namespace.use(socketMiddleware);
   namespace.use(async (socket: Socket, next: (err?: Error) => void) => {
     const parentCtx = propagation.extract(context.active(), socket.request.headers);
-    await tracer.startActiveSpan(
+    await withTracing(
       'ws.waiting.connection',
       {
         attributes: {
@@ -80,17 +79,7 @@ export function startWaitingNamespace(namespace: Namespace) {
         },
       },
       parentCtx,
-      async (eventSpan) => {
-        try {
-          await next();
-          eventSpan.setStatus({ code: 1 });
-        } catch (error) {
-          eventSpan.setStatus({ code: 2, message: (error as Error).message });
-          throw error;
-        } finally {
-          eventSpan.end();
-        }
-      },
+      async () => next(),
     );
   });
 
@@ -120,7 +109,7 @@ export function startWaitingNamespace(namespace: Namespace) {
       logger.info(packet, '🟢 [/waiting] Socket middleware packet');
       const eventType = packet[0];
 
-      await tracer.startActiveSpan(
+      await withTracing(
         eventType,
         {
           attributes: {
@@ -131,17 +120,7 @@ export function startWaitingNamespace(namespace: Namespace) {
           },
         },
         parentCtx,
-        async (eventSpan) => {
-          try {
-            await next();
-            eventSpan.setStatus({ code: 1 });
-          } catch (error) {
-            eventSpan.setStatus({ code: 2, message: (error as Error).message });
-            throw error;
-          } finally {
-            eventSpan.end();
-          }
-        },
+        async () => next(),
       );
     });
 
@@ -149,7 +128,7 @@ export function startWaitingNamespace(namespace: Namespace) {
     registerCustomEvents(socket, customSocketHandler, childLogger);
 
     socket.on('disconnect', async () => {
-      await tracer.startActiveSpan(
+      await withTracing(
         'ws.waiting.disconnect',
         {
           attributes: {
@@ -181,10 +160,10 @@ export function startWaitingNamespace(namespace: Namespace) {
           }
         },
       );
-    });
 
-    socket.on('error', (error: Error) => {
-      childLogger.info(`Error in waiting namespace: ${error.message}`);
+      socket.on('error', (error: Error) => {
+        childLogger.info(`Error in waiting namespace: ${error.message}`);
+      });
     });
   });
 }
