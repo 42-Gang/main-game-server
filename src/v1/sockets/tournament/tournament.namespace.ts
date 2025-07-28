@@ -5,10 +5,26 @@ import { tournamentMiddleware } from './tournament.middleware.js';
 import { TOURNAMENT_SOCKET_EVENTS } from './tournament.event.js';
 import TournamentSocketHandler from './handlers/tournament.socket.handler.js';
 import { socketErrorHandler } from '../utils/errorHandler.js';
+import { context, propagation } from '@opentelemetry/api';
+import { withTracing } from '../utils/tracing.helper.js';
 
 export function startTournamentNamespace(namespace: Namespace) {
   namespace.use(socketMiddleware);
   namespace.use(tournamentMiddleware);
+  namespace.use(async (socket: Socket, next) => {
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+    await withTracing(
+      'ws.tournament.connection',
+      {
+        attributes: {
+          namespace: socket.nsp.name,
+          socketId: socket.id,
+        },
+      },
+      parentCtx,
+      async () => next(),
+    );
+  });
 
   namespace.on('connection', async (socket: Socket) => {
     const diContainer = namespace.server.diContainer;
@@ -36,6 +52,23 @@ export function startTournamentNamespace(namespace: Namespace) {
       logger.error(error, `Error setting socket ID for user ${userId} in tournament namespace`);
       return;
     }
+
+    socket.use(async (packet, next) => {
+      const eventType = packet[0];
+
+      await withTracing(
+        eventType,
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId: userId,
+          },
+        },
+        context.active(),
+        async () => next(),
+      );
+    });
 
     socket.on(
       TOURNAMENT_SOCKET_EVENTS.READY,
