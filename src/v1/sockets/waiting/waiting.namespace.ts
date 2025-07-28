@@ -9,11 +9,7 @@ import AutoSocketHandler from './handlers/auto.socket.handler.js';
 import CustomSocketHandler from './handlers/custom.socket.handler.js';
 import { context, propagation, trace } from '@opentelemetry/api';
 
-function registerAutoEvents(
-  socket: Socket,
-  handler: AutoSocketHandler,
-  logger: FastifyBaseLogger,
-) {
+function registerAutoEvents(socket: Socket, handler: AutoSocketHandler, logger: FastifyBaseLogger) {
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.JOIN,
     socketErrorHandler(socket, logger, async (payload: autoJoinSchemaType) => {
@@ -73,6 +69,30 @@ const tracer = trace.getTracer('game-ws');
 
 export function startWaitingNamespace(namespace: Namespace) {
   namespace.use(socketMiddleware);
+  namespace.use(async (socket: Socket, next: (err?: Error) => void) => {
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+    await tracer.startActiveSpan(
+      'ws.waiting.connection',
+      {
+        attributes: {
+          namespace: socket.nsp.name,
+          socketId: socket.id,
+        },
+      },
+      parentCtx,
+      async (eventSpan) => {
+        try {
+          await next();
+          eventSpan.setStatus({ code: 1 });
+        } catch (error) {
+          eventSpan.setStatus({ code: 2, message: (error as Error).message });
+          throw error;
+        } finally {
+          eventSpan.end();
+        }
+      },
+    );
+  });
 
   namespace.on('connection', async (socket: Socket) => {
     const autoSocketHandler: AutoSocketHandler =
@@ -84,101 +104,87 @@ export function startWaitingNamespace(namespace: Namespace) {
     const userId = socket.data.userId;
 
     const parentCtx = propagation.extract(context.active(), socket.request.headers);
-    await tracer.startActiveSpan(
-      'ws.waiting.connection',
-      {
-        attributes: {
-          userId,
-          socketId: socket.id,
-        },
-      },
-      parentCtx,
-      async (span) => {
-        await socketCache.setSocketId({
-          namespace: 'waiting',
-          socketId: socket.id,
-          userId: userId,
-        });
-        const childLogger = logger.child({
-          namespace: 'waiting',
-          socketId: socket.id,
-          userId: userId,
-        });
-        childLogger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
+    await socketCache.setSocketId({
+      namespace: 'waiting',
+      socketId: socket.id,
+      userId: userId,
+    });
+    const childLogger = logger.child({
+      namespace: 'waiting',
+      socketId: socket.id,
+      userId: userId,
+    });
+    childLogger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
 
-        socket.use(async (packet, next) => {
-          logger.info(packet, '🟢 [/waiting] Socket middleware packet');
-          const eventType = packet[0];
-          const parentCtx = trace.setSpan(context.active(), span);
+    socket.use(async (packet, next) => {
+      logger.info(packet, '🟢 [/waiting] Socket middleware packet');
+      const eventType = packet[0];
 
-          await tracer.startActiveSpan(
+      await tracer.startActiveSpan(
+        eventType,
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId,
             eventType,
-            {
-              attributes: {
-                namespace: socket.nsp.name,
-                socketId: socket.id,
-                userId,
-                eventType,
-              },
-            },
-            parentCtx,
-            async (eventSpan) => {
-              try {
-                await next();
-                eventSpan.setStatus({ code: 1 });
-              } catch (error) {
-                eventSpan.setStatus({ code: 2, message: (error as Error).message });
-                throw error;
-              } finally {
-                eventSpan.end();
-              }
-            },
-          );
-        });
+          },
+        },
+        parentCtx,
+        async (eventSpan) => {
+          try {
+            await next();
+            eventSpan.setStatus({ code: 1 });
+          } catch (error) {
+            eventSpan.setStatus({ code: 2, message: (error as Error).message });
+            throw error;
+          } finally {
+            eventSpan.end();
+          }
+        },
+      );
+    });
 
-        registerAutoEvents(socket, autoSocketHandler, childLogger);
-        registerCustomEvents(socket, customSocketHandler, childLogger);
+    registerAutoEvents(socket, autoSocketHandler, childLogger);
+    registerCustomEvents(socket, customSocketHandler, childLogger);
 
-        socket.on('disconnect', async () => {
-          const parentCtx = trace.setSpan(context.active(), span);
-          await tracer.startActiveSpan(
-            'ws.waiting.disconnect',
-            {
-              attributes: {
-                userId,
-                socketId: socket.id,
-                eventType: 'disconnect',
-              },
-            },
-            parentCtx,
-            async (span) => {
-              span.setAttribute('userId', userId);
-              span.setAttribute('socketId', socket.id);
-              span.setAttribute('eventType', 'disconnect');
-              try {
-                childLogger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
-                await socketCache.deleteSocketId({
-                  namespace: 'waiting',
-                  userId: userId,
-                });
+    socket.on('disconnect', async () => {
+      await tracer.startActiveSpan(
+        'ws.waiting.disconnect',
+        {
+          attributes: {
+            userId,
+            socketId: socket.id,
+            eventType: 'disconnect',
+          },
+        },
+        parentCtx,
+        async (span) => {
+          span.setAttribute('userId', userId);
+          span.setAttribute('socketId', socket.id);
+          span.setAttribute('eventType', 'disconnect');
+          try {
+            childLogger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
+            await socketCache.deleteSocketId({
+              namespace: 'waiting',
+              userId: userId,
+            });
 
-                await autoSocketHandler.leaveAllAutoRooms(socket);
-                await customSocketHandler.leaveRoom(socket);
+            await autoSocketHandler.leaveAllAutoRooms(socket);
+            await customSocketHandler.leaveRoom(socket);
 
-                span.end();
-              } catch (error) {
-                childLogger.error(
-                  `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
-                );
-              }
-            },
-          );
-        });
+            span.end();
+          } catch (error) {
+            childLogger.error(
+              `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
+            );
+          }
+        },
+      );
+    });
 
-        socket.on('error', (error: Error) => {
-          childLogger.info(`Error in waiting namespace: ${error.message}`);
-        });
-      },
-    );
+    socket.on('error', (error: Error) => {
+      childLogger.info(`Error in waiting namespace: ${error.message}`);
+    });
   });
 }
