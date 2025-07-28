@@ -36,6 +36,7 @@ export function startTournamentNamespace(namespace: Namespace) {
     const logger = namespace.server.logger;
     const userId = socket.data.userId;
     const tournamentId = socket.data.tournamentId;
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
 
     try {
       await socketCache.setSocketId({
@@ -65,7 +66,7 @@ export function startTournamentNamespace(namespace: Namespace) {
             userId: userId,
           },
         },
-        context.active(),
+        parentCtx,
         async () => next(),
       );
     });
@@ -78,12 +79,25 @@ export function startTournamentNamespace(namespace: Namespace) {
       }),
     );
 
-    socket.on('disconnect', () => {
-      logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
-      socketCache.deleteSocketId({
-        namespace: 'tournament',
-        userId: userId,
-      });
+    socket.on('disconnect', async () => {
+      await withTracing(
+        'ws.tournament.disconnect',
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId: userId,
+          },
+        },
+        parentCtx,
+        async () => {
+          logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
+          await socketCache.deleteSocketId({
+            namespace: 'tournament',
+            userId: userId,
+          });
+        },
+      );
     });
   });
 }
