@@ -9,8 +9,6 @@ import { context, propagation } from '@opentelemetry/api';
 import { withTracing } from '../utils/tracing.helper.js';
 
 export function startTournamentNamespace(namespace: Namespace) {
-  namespace.use(socketMiddleware);
-  namespace.use(tournamentMiddleware);
   namespace.use(async (socket: Socket, next) => {
     const parentCtx = propagation.extract(context.active(), socket.request.headers);
     await withTracing(
@@ -25,6 +23,8 @@ export function startTournamentNamespace(namespace: Namespace) {
       async () => next(),
     );
   });
+  namespace.use(socketMiddleware);
+  namespace.use(tournamentMiddleware);
 
   namespace.on('connection', async (socket: Socket) => {
     const diContainer = namespace.server.diContainer;

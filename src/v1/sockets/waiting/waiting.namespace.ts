@@ -67,7 +67,6 @@ function registerCustomEvents(
 }
 
 export function startWaitingNamespace(namespace: Namespace) {
-  namespace.use(socketMiddleware);
   namespace.use(async (socket: Socket, next: (err?: Error) => void) => {
     const parentCtx = propagation.extract(context.active(), socket.request.headers);
     await withTracing(
@@ -82,6 +81,7 @@ export function startWaitingNamespace(namespace: Namespace) {
       async () => next(),
     );
   });
+  namespace.use(socketMiddleware);
 
   namespace.on('connection', async (socket: Socket) => {
     const autoSocketHandler: AutoSocketHandler =
