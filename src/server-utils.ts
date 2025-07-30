@@ -14,7 +14,7 @@ export function createServer() {
 
 export function getLoggerOptions() {
   return {
-    level: 'info',
+    level: process.env.FASTIFY_LOG_LEVEL,
     transport: {
       target: process.env.NODE_ENV === 'dev' ? 'pino-pretty' : 'pino/file',
       options: {
