@@ -1,4 +1,3 @@
-import './tracing.js';
 import { createServer, startServer } from './server-utils.js';
 import {
   configureServer,
