@@ -6,7 +6,7 @@ import { TOURNAMENT_SOCKET_EVENTS } from './tournament.event.js';
 import TournamentSocketHandler from './handlers/tournament.socket.handler.js';
 import { socketErrorHandler } from '../utils/errorHandler.js';
 import { context, propagation } from '@opentelemetry/api';
-import { withTracing } from '../utils/tracing.helper.js';
+import { withTracing } from '../../../tracing/tracing.helper.js';
 
 export function startTournamentNamespace(namespace: Namespace) {
   namespace.use(async (socket: Socket, next) => {

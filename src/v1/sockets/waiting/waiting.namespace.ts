@@ -8,7 +8,7 @@ import { FastifyBaseLogger } from 'fastify';
 import AutoSocketHandler from './handlers/auto.socket.handler.js';
 import CustomSocketHandler from './handlers/custom.socket.handler.js';
 import { context, propagation } from '@opentelemetry/api';
-import { withTracing } from '../utils/tracing.helper.js';
+import { withTracing } from '../../../tracing/tracing.helper.js';
 
 function registerAutoEvents(socket: Socket, handler: AutoSocketHandler, logger: FastifyBaseLogger) {
   socket.on(
@@ -93,6 +93,7 @@ export function startWaitingNamespace(namespace: Namespace) {
     const userId = socket.data.userId;
 
     const parentCtx = propagation.extract(context.active(), socket.request.headers);
+
     await socketCache.setSocketId({
       namespace: 'waiting',
       socketId: socket.id,
@@ -120,7 +121,10 @@ export function startWaitingNamespace(namespace: Namespace) {
           },
         },
         parentCtx,
-        async () => next(),
+        async (span) => {
+          next();
+          span.end();
+        },
       );
     });
 
