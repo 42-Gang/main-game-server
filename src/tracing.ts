@@ -1,6 +1,9 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import * as module from 'module';
+
+module.register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 
 if (!process.env.JAEGER_ENDPOINT) {
   throw new Error('JAEGER_ENDPOINT environment variable is not set');
