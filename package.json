@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "npm run build:ts && dotenv -e .env -- node --import ./dist/src/tracing.js dist/src/main.js",
-    "prod": "node --import ./dist/src/tracing.js dist/src/main.js",
+    "prod": "node --import ./dist/src/setup-tracing.js dist/src/main.js",
     "dev": "dotenv -e .env.dev -- tsx watch --import ./dist/src/setup-tracing.js src/main.ts",
     "run:ts": "tsx src/main.ts",
     "watch:ts": "tsx watch src/main.ts",
