@@ -1,6 +1,7 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { PrismaInstrumentation } from '@prisma/instrumentation';
 
 if (!process.env.JAEGER_ENDPOINT) {
   throw new Error('JAEGER_ENDPOINT environment variable is not set');
@@ -31,6 +32,7 @@ const sdk = new NodeSDK({
           }),
       },
     }),
+    new PrismaInstrumentation(),
   ],
 });
 
