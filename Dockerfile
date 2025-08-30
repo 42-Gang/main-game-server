@@ -9,8 +9,8 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN pnpm run prisma:generate \
- && pnpm run build:ts
+RUN pnpm run prisma:generate
+RUN pnpm run build:ts
 
 # 2. Production Stage
 FROM node:22-alpine AS runner
@@ -21,7 +21,7 @@ RUN corepack enable \
 
 # package.json, lockfile 복사 후 devDependencies 포함 설치
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile
 
 # 빌드 결과와 Prisma Client 복사
 COPY --from=builder /app/dist ./dist
