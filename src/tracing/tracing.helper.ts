@@ -16,8 +16,6 @@ export async function withTracing<T>(
     } catch (error) {
       span.setStatus({ code: 2, message: (error as Error).message });
       throw error;
-    } finally {
-      span.end();
     }
   });
 }
