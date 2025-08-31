@@ -142,10 +142,7 @@ export function startWaitingNamespace(namespace: Namespace) {
           },
         },
         parentCtx,
-        async (span) => {
-          span.setAttribute('userId', userId);
-          span.setAttribute('socketId', socket.id);
-          span.setAttribute('eventType', 'disconnect');
+        async () => {
           try {
             childLogger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
             await socketCache.deleteSocketId({
@@ -155,8 +152,6 @@ export function startWaitingNamespace(namespace: Namespace) {
 
             await autoSocketHandler.leaveAllAutoRooms(socket);
             await customSocketHandler.leaveRoom(socket);
-
-            span.end();
           } catch (error) {
             childLogger.error(
               `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
