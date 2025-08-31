@@ -1,4 +1,4 @@
-import { trace, Span, SpanOptions, Context } from '@opentelemetry/api';
+import { Context, Span, SpanOptions, SpanStatusCode, trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('game-ws');
 
@@ -11,10 +11,10 @@ export async function withTracing<T>(
   return tracer.startActiveSpan(name, options, parentCtx, async (span) => {
     try {
       const result = await fn(span);
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       throw error;
     }
   });
