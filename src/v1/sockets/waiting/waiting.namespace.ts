@@ -7,20 +7,22 @@ import { WAITING_SOCKET_EVENTS } from './waiting.event.js';
 import { FastifyBaseLogger } from 'fastify';
 import AutoSocketHandler from './handlers/auto.socket.handler.js';
 import CustomSocketHandler from './handlers/custom.socket.handler.js';
+import { context, propagation } from '@opentelemetry/api';
+import { withTracing } from '../../../tracing/tracing.helper.js';
 
 function registerAutoEvents(socket: Socket, handler: AutoSocketHandler, logger: FastifyBaseLogger) {
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.JOIN,
-    socketErrorHandler(socket, logger, (payload: autoJoinSchemaType) =>
-      handler.joinAutoRoom(socket, payload),
-    ),
+    socketErrorHandler(socket, logger, async (payload: autoJoinSchemaType) => {
+      await handler.joinAutoRoom(socket, payload);
+    }),
   );
 
   socket.on(
     WAITING_SOCKET_EVENTS.AUTO.LEAVE,
-    socketErrorHandler(socket, logger, (payload: autoLeaveSchemaType) =>
-      handler.leaveAutoRoom(socket, payload),
-    ),
+    socketErrorHandler(socket, logger, async (payload: autoLeaveSchemaType) => {
+      await handler.leaveAutoRoom(socket, payload);
+    }),
   );
 }
 
@@ -31,27 +33,54 @@ function registerCustomEvents(
 ) {
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.CREATE,
-    socketErrorHandler(socket, logger, (payload) => handler.createCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.createCustomRoom(socket, payload);
+    }),
   );
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.INVITE,
-    socketErrorHandler(socket, logger, (payload) => handler.inviteCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.inviteCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.ACCEPT,
-    socketErrorHandler(socket, logger, (payload) => handler.acceptCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.acceptCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.START,
-    socketErrorHandler(socket, logger, (payload) => handler.startCustomRoom(socket, payload)),
+    socketErrorHandler(socket, logger, async (payload) => {
+      await handler.startCustomRoom(socket, payload);
+    }),
   );
+
   socket.on(
     WAITING_SOCKET_EVENTS.CUSTOM.LEAVE,
-    socketErrorHandler(socket, logger, () => handler.leaveRoom(socket)),
+    socketErrorHandler(socket, logger, async () => {
+      await handler.leaveRoom(socket);
+    }),
   );
 }
 
 export function startWaitingNamespace(namespace: Namespace) {
+  namespace.use(async (socket: Socket, next: (err?: Error) => void) => {
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+    await withTracing(
+      'ws.waiting.connection',
+      {
+        attributes: {
+          namespace: socket.nsp.name,
+          socketId: socket.id,
+        },
+      },
+      parentCtx,
+      async () => next(),
+    );
+  });
   namespace.use(socketMiddleware);
 
   namespace.on('connection', async (socket: Socket) => {
@@ -63,36 +92,77 @@ export function startWaitingNamespace(namespace: Namespace) {
     const logger = namespace.server.logger;
     const userId = socket.data.userId;
 
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+
     await socketCache.setSocketId({
       namespace: 'waiting',
       socketId: socket.id,
       userId: userId,
     });
+    const childLogger = logger.child({
+      namespace: 'waiting',
+      socketId: socket.id,
+      userId: userId,
+    });
+    childLogger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
 
-    logger.info(`🟢 [/waiting] Connected: ${socket.id} ${userId}`);
+    socket.use(async (packet, next) => {
+      logger.info(packet, '🟢 [/waiting] Socket middleware packet');
+      const eventType = packet[0];
 
-    registerAutoEvents(socket, autoSocketHandler, logger);
-    registerCustomEvents(socket, customSocketHandler, logger);
+      await withTracing(
+        eventType,
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId,
+            eventType,
+          },
+        },
+        parentCtx,
+        async (span) => {
+          next();
+          span.end();
+        },
+      );
+    });
+
+    registerAutoEvents(socket, autoSocketHandler, childLogger);
+    registerCustomEvents(socket, customSocketHandler, childLogger);
 
     socket.on('disconnect', async () => {
-      try {
-        logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
-        await socketCache.deleteSocketId({
-          namespace: 'waiting',
-          userId: userId,
-        });
+      await withTracing(
+        'ws.waiting.disconnect',
+        {
+          attributes: {
+            userId,
+            socketId: socket.id,
+            eventType: 'disconnect',
+          },
+        },
+        parentCtx,
+        async () => {
+          try {
+            childLogger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
+            await socketCache.deleteSocketId({
+              namespace: 'waiting',
+              userId: userId,
+            });
 
-        await autoSocketHandler.leaveAllAutoRooms(socket);
-        await customSocketHandler.leaveRoom(socket);
-      } catch (error) {
-        logger.error(
-          `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
-        );
-      }
+            await autoSocketHandler.leaveAllAutoRooms(socket);
+            await customSocketHandler.leaveRoom(socket);
+          } catch (error) {
+            childLogger.error(
+              `Error during disconnect for socket ${socket.id} and user ${userId}: ${error instanceof Error ? error.message : error}`,
+            );
+          }
+        },
+      );
     });
 
     socket.on('error', (error: Error) => {
-      logger.info(`Error in waiting namespace: ${error.message}`);
+      childLogger.info(`Error in waiting namespace: ${error.message}`);
     });
   });
 }

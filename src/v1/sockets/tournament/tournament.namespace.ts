@@ -5,8 +5,24 @@ import { tournamentMiddleware } from './tournament.middleware.js';
 import { TOURNAMENT_SOCKET_EVENTS } from './tournament.event.js';
 import TournamentSocketHandler from './handlers/tournament.socket.handler.js';
 import { socketErrorHandler } from '../utils/errorHandler.js';
+import { context, propagation } from '@opentelemetry/api';
+import { withTracing } from '../../../tracing/tracing.helper.js';
 
 export function startTournamentNamespace(namespace: Namespace) {
+  namespace.use(async (socket: Socket, next) => {
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
+    await withTracing(
+      'ws.tournament.connection',
+      {
+        attributes: {
+          namespace: socket.nsp.name,
+          socketId: socket.id,
+        },
+      },
+      parentCtx,
+      async () => next(),
+    );
+  });
   namespace.use(socketMiddleware);
   namespace.use(tournamentMiddleware);
 
@@ -20,6 +36,7 @@ export function startTournamentNamespace(namespace: Namespace) {
     const logger = namespace.server.logger;
     const userId = socket.data.userId;
     const tournamentId = socket.data.tournamentId;
+    const parentCtx = propagation.extract(context.active(), socket.request.headers);
 
     try {
       await socketCache.setSocketId({
@@ -37,6 +54,23 @@ export function startTournamentNamespace(namespace: Namespace) {
       return;
     }
 
+    socket.use(async (packet, next) => {
+      const eventType = packet[0];
+
+      await withTracing(
+        eventType,
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId: userId,
+          },
+        },
+        parentCtx,
+        async () => next(),
+      );
+    });
+
     socket.on(
       TOURNAMENT_SOCKET_EVENTS.READY,
       socketErrorHandler(socket, logger, async () => {
@@ -45,12 +79,25 @@ export function startTournamentNamespace(namespace: Namespace) {
       }),
     );
 
-    socket.on('disconnect', () => {
-      logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
-      socketCache.deleteSocketId({
-        namespace: 'tournament',
-        userId: userId,
-      });
+    socket.on('disconnect', async () => {
+      await withTracing(
+        'ws.tournament.disconnect',
+        {
+          attributes: {
+            namespace: socket.nsp.name,
+            socketId: socket.id,
+            userId: userId,
+          },
+        },
+        parentCtx,
+        async () => {
+          logger.info(`🔴 [/waiting] Disconnected: ${socket.id}`);
+          await socketCache.deleteSocketId({
+            namespace: 'tournament',
+            userId: userId,
+          });
+        },
+      );
     });
   });
 }

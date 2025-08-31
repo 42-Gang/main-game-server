@@ -25,7 +25,6 @@ export default class AutoSocketHandler {
 
   async joinAutoRoom(socket: Socket, payload: autoJoinSchemaType) {
     autoJoinSchema.parse(payload);
-
     const { tournamentSize } = payload;
 
     this.logger.info(
@@ -33,7 +32,7 @@ export default class AutoSocketHandler {
     );
 
     if (await this.waitingQueueCache.isUserInQueue(tournamentSize, socket.data.userId)) {
-      this.logger.info(
+      this.logger.error(
         `User ${socket.data.userId} is already in the waiting queue for size ${tournamentSize}`,
       );
       throw new Error(`User is already in the waiting queue for size ${tournamentSize}`);
