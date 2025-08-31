@@ -164,10 +164,10 @@ export function startWaitingNamespace(namespace: Namespace) {
           }
         },
       );
+    });
 
-      socket.on('error', (error: Error) => {
-        childLogger.info(`Error in waiting namespace: ${error.message}`);
-      });
+    socket.on('error', (error: Error) => {
+      childLogger.info(`Error in waiting namespace: ${error.message}`);
     });
   });
 }
