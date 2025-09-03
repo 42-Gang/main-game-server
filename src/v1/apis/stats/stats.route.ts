@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { addRoutes, Route } from '../../../plugins/router.js';
-import { ZGetStatsQuery, ZGetStatsResponse } from './schemas/game.stats.schema.js';
+import { ZGetStatsParams, ZGetStatsQuery, ZGetStatsResponse } from './schemas/game.stats.schema.js';
 import StatsController from './stats.controller.js';
 
 export default async function statsRoutes(fastify: FastifyInstance) {
@@ -16,6 +16,7 @@ export default async function statsRoutes(fastify: FastifyInstance) {
         description: 'Get game stats by user and mode (duel | tournament)',
         schema: {
           querystring: ZGetStatsQuery,
+          params: ZGetStatsParams,
           response: {
             200: ZGetStatsResponse,
           },

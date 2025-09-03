@@ -56,6 +56,9 @@ export enum StatsModeEnum {
   TOURNAMENT = 'tournament',
 }
 export const ZGetStatsQuery = z.object({ mode: z.nativeEnum(StatsModeEnum) });
+export const ZGetStatsParams = z.object({
+  userId: z.preprocess((val) => Number(val), z.number().int().nonnegative()),
+});
 
 export type UserMini = z.infer<typeof ZUserMini>;
 export type DuelData = z.infer<typeof ZDuelData>;

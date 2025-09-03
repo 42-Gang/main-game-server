@@ -3,6 +3,7 @@ import StatsService from './stats.service.js';
 import {
   StatsModeEnum,
   ZGetDuelStatsResponse,
+  ZGetStatsParams,
   ZGetStatsQuery,
   ZGetTournamentStatsResponse,
 } from './schemas/game.stats.schema.js';
@@ -14,8 +15,9 @@ export default class StatsController {
 
   getStats = async (request: FastifyRequest, reply: FastifyReply) => {
     const query = ZGetStatsQuery.parse(request.query);
-    const userId = request.userId;
+    const params = ZGetStatsParams.parse(request.params);
     const mode = query.mode;
+    const userId = params.userId;
 
     if (!userId || Number.isNaN(userId)) {
       throw new Error('Invalid userId in request');
