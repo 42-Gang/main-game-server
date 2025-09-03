@@ -8,7 +8,6 @@ import {
   ZGetTournamentStatsResponse,
 } from './schemas/game.stats.schema.js';
 import { STATUS } from '../../common/constants/status.js';
-import { BadRequestException } from '../../common/exceptions/core.error.js';
 
 export default class StatsController {
   constructor(private readonly statsService: StatsService) {}
@@ -19,25 +18,24 @@ export default class StatsController {
     const mode = query.mode;
     const userId = params.userId;
 
-    let data;
-    let responseSchema;
-
     if (mode === StatsModeEnum.DUEL) {
-      data = await this.statsService.getDuelStats(userId);
-      responseSchema = ZGetDuelStatsResponse;
-    } else if (mode === StatsModeEnum.TOURNAMENT) {
-      data = await this.statsService.getTournamentStats(userId);
-      responseSchema = ZGetTournamentStatsResponse;
-    } else {
-      throw new BadRequestException('Invalid mode parameter');
+      const data = await this.statsService.getDuelStats(userId);
+      const body = {
+        status: STATUS.SUCCESS,
+        code: 200,
+        message: 'Request processed successfully',
+        data,
+      };
+      return reply.code(200).send(ZGetDuelStatsResponse.parse(body));
     }
 
+    const data = await this.statsService.getTournamentStats(userId);
     const body = {
       status: STATUS.SUCCESS,
       code: 200,
       message: 'Request processed successfully',
       data,
     };
-    return reply.code(200).send(responseSchema.parse(body));
+    return reply.code(200).send(ZGetTournamentStatsResponse.parse(body));
   };
 }
