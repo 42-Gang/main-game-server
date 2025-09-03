@@ -57,7 +57,12 @@ export enum StatsModeEnum {
   DUEL = 'duel',
   TOURNAMENT = 'tournament',
 }
-export const ZGetStatsQuery = z.object({ mode: z.nativeEnum(StatsModeEnum) });
+export const ZGetStatsQuery = z.object({
+  mode: z.preprocess(
+    (str) => (typeof str === 'string' ? str.toLowerCase() : str),
+    z.nativeEnum(StatsModeEnum),
+  ),
+});
 export const ZGetStatsParams = z.object({
   userId: z.preprocess((val) => Number(val), z.number().int().nonnegative()),
 });
