@@ -29,7 +29,7 @@ export default class StatsService {
       cache.set(userId, mini);
       return mini;
     } catch (e) {
-      this.logger.warn(e, `Failed to fetch user info for ${userId}, using fallback`);
+      this.logger.error(e, `Failed to fetch user info for ${userId}, using fallback`);
       const mini: UserMini = { id: userId, nickname: String(userId) };
       cache.set(userId, mini);
       return mini;
