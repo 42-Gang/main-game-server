@@ -38,6 +38,7 @@ export default class TournamentRepository implements TournamentRepositoryInterfa
         players: {
           some: { userId },
         },
+        status: 'FINISHED',
       },
       include: {
         players: true,
@@ -55,6 +56,7 @@ export default class TournamentRepository implements TournamentRepositoryInterfa
           some: { userId },
         },
         size: 2,
+        status: 'FINISHED',
       },
       include: {
         players: true,
@@ -72,6 +74,7 @@ export default class TournamentRepository implements TournamentRepositoryInterfa
         size: {
           gt: 2,
         },
+        status: 'FINISHED',
       },
     });
   }
