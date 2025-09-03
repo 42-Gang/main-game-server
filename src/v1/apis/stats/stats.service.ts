@@ -100,11 +100,11 @@ export default class StatsService {
       }),
     );
 
-    const losses = Math.max(0, (tournaments?.length ?? 0) - (wins ?? 0));
+    const losses = Math.max(0, tournaments.length - wins);
 
     const data: TournamentData = {
       mode: 'tournament',
-      summary: { wins: wins ?? 0, losses },
+      summary: { wins: wins, losses },
       history,
     } as TournamentData;
 
