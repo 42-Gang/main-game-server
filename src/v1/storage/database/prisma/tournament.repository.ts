@@ -38,6 +38,9 @@ export default class TournamentRepository implements TournamentRepositoryInterfa
         players: {
           some: { userId },
         },
+        size: {
+          gt: 2,
+        },
         status: 'FINISHED',
       },
       include: {
