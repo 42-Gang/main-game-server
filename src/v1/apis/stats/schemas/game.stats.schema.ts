@@ -45,9 +45,6 @@ export const ZTournamentData = z.object({
   history: z.array(ZTournamentHistoryItem),
 });
 
-export const ZGameStatsData = z.discriminatedUnion('mode', [ZDuelData, ZTournamentData]);
-
-export const ZGetStatsResponse = createResponseSchema(ZGameStatsData);
 export const ZGetDuelStatsResponse = createResponseSchema(ZDuelData);
 export const ZGetTournamentStatsResponse = createResponseSchema(ZTournamentData);
 

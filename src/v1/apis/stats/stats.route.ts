@@ -1,7 +1,13 @@
 import { FastifyInstance } from 'fastify';
 import { addRoutes, Route } from '../../../plugins/router.js';
-import { ZGetStatsParams, ZGetStatsQuery, ZGetStatsResponse } from './schemas/game.stats.schema.js';
+import {
+  ZGetDuelStatsResponse,
+  ZGetStatsParams,
+  ZGetStatsQuery,
+  ZGetTournamentStatsResponse,
+} from './schemas/game.stats.schema.js';
 import StatsController from './stats.controller.js';
+import { z } from 'zod';
 
 export default async function statsRoutes(fastify: FastifyInstance) {
   const gameStatsController: StatsController = fastify.diContainer.resolve('statsController');
@@ -18,7 +24,7 @@ export default async function statsRoutes(fastify: FastifyInstance) {
           querystring: ZGetStatsQuery,
           params: ZGetStatsParams,
           response: {
-            200: ZGetStatsResponse,
+            200: z.union([ZGetDuelStatsResponse, ZGetTournamentStatsResponse]),
           },
         },
       },
