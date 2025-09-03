@@ -87,7 +87,7 @@ export default class StatsService {
 
     const history = await Promise.all(
       tournaments.map(async (tournament: TournamentWithPlayers) => {
-        const participantIds = (tournament.players || []).map((player: Player) => player.userId);
+        const participantIds = tournament.players.map((player: Player) => player.userId);
         const participants = await Promise.all(
           participantIds.map((pid: number) => this.getUserMiniCached(userCache, pid)),
         );
