@@ -8,7 +8,7 @@ export default async function app(fastify: FastifyInstance) {
   setDecorate(fastify);
   setMiddleware(fastify);
 
-  fastify.register(routeV1, { prefix: '/v1' });
+  fastify.register(routeV1, { prefix: '/v1/game' });
 }
 
 function setErrorHandler(fastify: FastifyInstance) {
