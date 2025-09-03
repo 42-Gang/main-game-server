@@ -55,6 +55,9 @@ model Match {
   round        Int
   status       Status @default(NOT_STARTED)
 
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   nextMatchId     Int?    @map("next_match_id")
   nextMatch       Match?  @relation("NextMatch", fields: [nextMatchId], references: [id])
   previousMatches Match[] @relation("NextMatch")
