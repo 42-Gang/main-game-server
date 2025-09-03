@@ -55,4 +55,38 @@ export default class MatchRepository implements MatchRepositoryInterface {
       },
     });
   }
+
+  async findFinishedMatchesByUserInDuel(userId: number): Promise<Match[]> {
+    return this.prisma.match.findMany({
+      where: {
+        status: 'FINISHED',
+        tournament: { size: 2 },
+        OR: [{ player1Id: userId }, { player2Id: userId }],
+      },
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  async countWinsLossesInDuelByUser(userId: number): Promise<{ wins: number; losses: number }> {
+    const [wins, losses] = await Promise.all([
+      this.prisma.match.count({
+        where: {
+          status: 'FINISHED',
+          tournament: { size: 2 },
+          winner: userId,
+        },
+      }),
+      this.prisma.match.count({
+        where: {
+          status: 'FINISHED',
+          tournament: { size: 2 },
+          OR: [{ player1Id: userId }, { player2Id: userId }],
+          winner: { not: null },
+          NOT: { winner: userId },
+        },
+      }),
+    ]);
+
+    return { wins, losses };
+  }
 }
