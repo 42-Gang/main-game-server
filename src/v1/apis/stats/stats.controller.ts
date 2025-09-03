@@ -7,7 +7,6 @@ import {
   ZGetStatsQuery,
   ZGetTournamentStatsResponse,
 } from './schemas/game.stats.schema.js';
-import { BadRequestException } from '../../common/exceptions/core.error.js';
 import { STATUS } from '../../common/constants/status.js';
 
 export default class StatsController {
@@ -18,14 +17,6 @@ export default class StatsController {
     const params = ZGetStatsParams.parse(request.params);
     const mode = query.mode;
     const userId = params.userId;
-
-    if (!userId || Number.isNaN(userId)) {
-      throw new Error('Invalid userId in request');
-    }
-
-    if (mode !== StatsModeEnum.DUEL && mode !== StatsModeEnum.TOURNAMENT) {
-      throw new BadRequestException('Invalid mode');
-    }
 
     if (mode === StatsModeEnum.DUEL) {
       const data = await this.statsService.getDuelStats(userId);
