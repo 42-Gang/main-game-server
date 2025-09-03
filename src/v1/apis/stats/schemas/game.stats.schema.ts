@@ -32,11 +32,16 @@ export const ZDuelData = z.object({
   history: z.array(ZDuelHistoryItem),
 });
 
+export enum TournamentResultEnum {
+  WIN = 'WIN',
+  LOSS = 'LOSS',
+}
+
 export const ZTournamentHistoryItem = z.object({
   tournamentId: z.number().int().positive(),
   rounds: z.number().int().positive(),
   participants: z.array(ZUserMini).min(1),
-  myResult: z.enum(['WIN', 'LOSS']),
+  myResult: z.nativeEnum(TournamentResultEnum),
 });
 
 export const ZTournamentData = z.object({

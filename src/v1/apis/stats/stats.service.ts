@@ -8,6 +8,8 @@ import {
   ZDuelData,
   ZTournamentData,
   UserMini,
+  TournamentResultEnum,
+  StatsModeEnum,
 } from './schemas/game.stats.schema.js';
 import { Match, Player } from '@prisma/client';
 import { TournamentWithPlayers } from '../../storage/database/interfaces/tournament.repository.interface.js';
@@ -49,6 +51,12 @@ export default class StatsService {
         if (!match.player1Id || !match.player2Id) {
           throw new InternalServerException('Match is missing player1Id or player2Id');
         }
+        if (match.winner === null) {
+          throw new InternalServerException('Match is missing winner');
+        }
+        if (match.player1Score === null || match.player2Score === null) {
+          throw new InternalServerException('Match is missing player scores');
+        }
         const [p1, p2] = await Promise.all([
           this.getUserMiniCached(userCache, match.player1Id),
           this.getUserMiniCached(userCache, match.player2Id),
@@ -69,10 +77,10 @@ export default class StatsService {
     );
 
     const data: DuelData = {
-      mode: 'duel',
-      summary: { wins: wins ?? 0, losses: losses ?? 0 },
+      mode: StatsModeEnum.DUEL,
+      summary: { wins: wins, losses: losses },
       history,
-    } as DuelData;
+    };
 
     return ZDuelData.parse(data);
   }
@@ -95,7 +103,8 @@ export default class StatsService {
           tournamentId: tournament.id,
           rounds: tournament.size,
           participants,
-          myResult: tournament.winnerId === userId ? 'WIN' : 'LOSS',
+          myResult:
+            tournament.winnerId === userId ? TournamentResultEnum.WIN : TournamentResultEnum.LOSS,
         };
       }),
     );
@@ -103,10 +112,10 @@ export default class StatsService {
     const losses = Math.max(0, tournaments.length - wins);
 
     const data: TournamentData = {
-      mode: 'tournament',
+      mode: StatsModeEnum.TOURNAMENT,
       summary: { wins: wins, losses },
       history,
-    } as TournamentData;
+    };
 
     return ZTournamentData.parse(data);
   }
