@@ -11,6 +11,7 @@ import {
 } from './schemas/game.stats.schema.js';
 import { Match, Player } from '@prisma/client';
 import { TournamentWithPlayers } from '../../storage/database/interfaces/tournament.repository.interface.js';
+import { InternalServerException } from '../../common/exceptions/core.error.js';
 
 export default class StatsService {
   constructor(
@@ -45,21 +46,22 @@ export default class StatsService {
 
     const history = await Promise.all(
       matches.map(async (match: Match) => {
-        const p1Id = match.player1Id ?? 0;
-        const p2Id = match.player2Id ?? 0;
+        if (!match.player1Id || !match.player2Id) {
+          throw new InternalServerException('Match is missing player1Id or player2Id');
+        }
         const [p1, p2] = await Promise.all([
-          this.getUserMiniCached(userCache, p1Id),
-          this.getUserMiniCached(userCache, p2Id),
+          this.getUserMiniCached(userCache, match.player1Id),
+          this.getUserMiniCached(userCache, match.player2Id),
         ]);
         return {
-          date: match.createdAt?.toISOString?.() ?? new Date().toISOString(),
+          date: match.createdAt.toISOString(),
           player1: p1,
           player2: p2,
           result: {
-            winnerId: match.winner ?? 0,
+            winnerId: match.winner,
             scores: {
-              player1: match.player1Score ?? 0,
-              player2: match.player2Score ?? 0,
+              player1: match.player1Score,
+              player2: match.player2Score,
             },
           },
         };
