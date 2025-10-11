@@ -62,6 +62,7 @@ export default class StatsService {
           this.getUserMiniCached(userCache, match.player2Id),
         ]);
         return {
+          tournamentId: match.tournamentId,
           date: match.createdAt.toISOString(),
           player1: p1,
           player2: p2,
