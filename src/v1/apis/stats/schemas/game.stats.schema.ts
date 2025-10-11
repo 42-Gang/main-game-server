@@ -20,6 +20,7 @@ export const ZDuelResult = z.object({
 });
 
 export const ZDuelHistoryItem = z.object({
+  tournamentId: z.number().int().positive(),
   date: z.string().datetime(),
   player1: ZUserMini,
   player2: ZUserMini,
